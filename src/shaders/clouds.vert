@@ -114,19 +114,6 @@ void main(){
 	float x1=.721+(position.x-.721)/30;
 	//if (x1>7.22)
 	//x1+=noise(position.yz*50)/10/50;
-	int i;	
-	for (i=0;i<16;i++){
-		if (x1>=u_Spectrum[i].a && x1<=u_Spectrum[i+1].a){
-		
-		float size=u_Spectrum[i+1].a-u_Spectrum[i].a;
-		float ratio=1-(x1-u_Spectrum[i].a)/size;
-		
-		color2=vec4(mix(u_Spectrum[i+1].rgb,u_Spectrum[i].rgb,ratio),1);
-		
-		
-		break;
-		}
-	}
 		
 	vec3 spec=normalize((normalize(u_Light)+normalize(u_Camera.xyz))/2);
 
@@ -209,8 +196,9 @@ if(position.x<=.721){
 	//if (color2.r+color2.g+color2.b>2)color2=vec4(1,1,1,1);
 	//else color2=vec4(0,0,0,1);
     //gl_Position.z+=u_Scale-1;
-	pos.x=.71+(position.x-.71)*u_Roughness;
-	gl_Position=vec4(euclidian(pos),1);
+	color2 = vec4(.8,.8,.8,position.x)
+
+	gl_Position=vec4(euclidian(vec3(1,position.yz)),1);
 	gl_Position=u_Projection*gl_Position;
 
 
