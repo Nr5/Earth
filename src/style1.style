@@ -1,0 +1,54 @@
+#80000000
+#FF402020
+#FF804040
+#FF805050
+#FF906060
+#FFF0D0D0
+#800000A0
+#FF000000
+#FFFFFFFF
+.win
+	background 7
+	foreground 8
+	border 0
+.panel
+	background 0
+	foreground 8
+	border 3
+	hover-background 0
+	hover-foreground 8
+	hover-border 3
+	click-background 0
+	click-foreground 8
+	click-border 3
+.button
+	background 0
+	foreground 3
+	border 1
+	hover-background 0
+	hover-foreground 4
+	hover-border 1
+	click-background 0
+	click-foreground 8
+	click-border 8
+	font a
+.slider
+	background 1
+	foreground 2
+	border 1
+	hover-background 1
+	hover-foreground 3
+	hover-border 1
+	click-background 1
+	click-foreground 4
+	click-border 1
+.white
+	background 8
+	foreground 8
+	border 8
+	hover-background 8
+	hover-foreground 8
+	hover-border 8
+	click-background 8
+	click-foreground 8
+	click-border 8
