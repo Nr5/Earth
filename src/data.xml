@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<Ui>
+	<Window x="10" y="10"
+		 width="1920" height="1080"
+		 class="win"
+		 onclose="close" 
+		 resizable="true"  
+		 render="draw" 
+		 object="object" 
+		 onmousemove="mousemove" 
+		 onmousedrag="mousedrag" 
+		 onkeypress="keypress" 
+		 update="update">
+		<Panel x="1520" y="200" width="400" height="800" class="panel" onclick="click" >
+			
+			<Slider type="float" x="40" y="20" width="100" height="20" class="button" max=".2" value="roughness" />
+			<Slider type="float" x="40" y="60" width="100" height="20" class="button" max=".5" value="shine" />
+
+			<Checkbox  x="120" y="40" size="20" class="button" value="drawcities" bit="0" />
+
+			<ScrollPane x="40" y="100" width="200" height="300" class="panel">
+				 <list data="color" function="colorlistadd" size="9"/>
+			</ScrollPane>
+	
+
+			<Button x="750" y="40" width="80" height="30" class="button" onclick="record" text="screen record" />
+
+
+
+		</Panel>
+	</Window>
+</Ui>
