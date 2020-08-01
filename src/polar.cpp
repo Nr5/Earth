@@ -72,7 +72,11 @@ unsigned int cityname_texture;
 //unsigned int text_texture;
 int texture_width;
 int texture_height;
-short screenshot[61+1920*1080*2] = {
+
+bool do_screenshot=0;
+
+
+short screenshot[61+1920*1080*4] = {
 		19778,4218,39,0,0,122,0,108,0,
 		1920,0,1080,0,1,32,
 		3,0,4096,39,0,0,0,0,0,0,0,0,0,255,-256,0,255,0,0,-256,28192,22377,
@@ -258,52 +262,33 @@ static void load_mesh(){
 }
 
 static void init(){
-	  load_mesh();
-	  std::ifstream file ("../res/cities",std::ios_base::in);
-	  int citynames_size;
-	  if (file.is_open())
-	  {
+	load_mesh();
+	std::ifstream file ("../res/cities",std::ios_base::in);
+	int citynames_size;
+	// Read Cities
+ 	if (file.is_open())
+	{
 		file.read ((char*)&city_count, 4);
-		std::cout <<city_count<<" cities\n";
-
 		file.read ((char*)&citynames_size, 4);
-		std::cout <<city_count<<" cities\n";
-
 		cities=new float [ city_count*3 ];
-		/*
-		((vec4*)cities)[0] = vec4( 			  0 , .72f, 0,			   1 ) * 1.01f;
-		((vec4*)cities)[1] = vec4(cos(0*2*PI/3) , .72f, sin(0*2*PI/3), 1 ) *  .99f;
-		((vec4*)cities)[2] = vec4(cos(1*2*PI/3) , .72f, sin(1*2*PI/3), 1 ) *  .99f;
-		((vec4*)cities)[3] = vec4(cos(2*2*PI/3) , .72f, sin(2*2*PI/3), 1 ) *  .99f;
-	    */
-		std::cout <<"0\n";
-
 		file.read (((char*)cities) , city_count*4*3);
-		std::cout <<"1\n";
-
 		citynamebuffer=new char[citynames_size];
-		std::cout <<"textbufferlength:"<<citynames_size<<"\n";
-
 		file.read (citynamebuffer,citynames_size);
-		std::cout <<"3\n";
+		file.close();
+	}
 
-	    file.close();
+	citynames=new char*[city_count];
+	citynames[0]=citynamebuffer;
+	int i=1;
+	for (char*p=citynamebuffer;i<city_count;p++){
+	  if(!(*p)){
+		 citynames[i]=p+1;
+		 i++;
 	  }
-	  citynames=new char*[city_count];
-	  citynames[0]=citynamebuffer;
-	  int i=1;
-	  for (char*p=citynamebuffer;i<city_count;p++){
-		  if(!(*p)){
-			  citynames[i]=p+1;
-			  i++;
-		  }
-	  }
-/*
-	  for(char* name:citynames){
-		  std::cout<<name<<"\n";
-	  }
-*/
+	}
+	printf("cities loaded\n");
 
+	//Load Colors	
 	std::ifstream spectrumfile ("./spectrum",std::ios_base::in);
 	if (spectrumfile.is_open()) {
 		spectrumfile.read(&spectrumcount,1);
@@ -311,10 +296,12 @@ static void init(){
 		spectrumfile.close();
 		std::memcpy(spectrum, spectra,16*4*sizeof(float));
 
-		std::cout << "spectrum loaded\n";
 		cspanel.height=spectrumcount*50;
 	}
+	printf("Colors loaded\n");
 
+
+	// Buffers
 	glGenRenderbuffers( 1, &renderBuffer );
 	glBindRenderbuffer( GL_RENDERBUFFER, renderBuffer );
 	glRenderbufferStorage( GL_RENDERBUFFER, GL_RGBA32F, lo, la );
@@ -324,18 +311,24 @@ static void init(){
 	glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, renderBuffer);
 	glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
+
+	// Initialize Nukes
 	for(int i=0;i<16;i++){
 		nukes[i].startpos = euclidian(vec3(.721,cities[i*8*3+1],cities[i*8*3+2] ));
-		vec3 endpos = euclidian(vec3(.721,cities[(city_count-(i*8)-1)*3+1],cities[(city_count-(i*8)-1)*3+2] ));
+		vec3 endpos = euclidian(vec3(
+								.721,
+								cities[(city_count-(i*8)-1)*3+1],
+								cities[(city_count-(i*8)-1)*3+2] 
+								));
 		
 		explosions[i]=vec4(endpos,24);
 
 		nukes[i].axis =cross( nukes[i].startpos,endpos );
-		float angle=glm::acos ( glm::dot(glm::normalize(nukes[i].startpos), glm::normalize(endpos)) );
-	
-		//glColor4f(1.f,1.f,1.f,1.f);
-		//glLineWidth(1);
-    	//glBegin(GL_LINES);
+		float angle=glm::acos ( glm::dot(
+										glm::normalize(nukes[i].startpos), 
+										glm::normalize(endpos)
+										) 
+								);
 	
 		nukes[i].height 	= 0;
 		nukes[i].velocity 	= 49.f*angle/2;
@@ -343,9 +336,7 @@ static void init(){
 		nukes[i].end_angle  = angle;	
 		nukes[i].length 	= 8;
 	}
-
-
-	std::cout<<"text loaded\n";
+	printf("Nukes Initialized\n");
 }
 
 static void act(Panel *panel){
@@ -380,20 +371,11 @@ static bool mousemove(Panel *panel,SDL_Event event,int x,int y,int lastx,int las
 	}
 
 	cursorp=glm::vec3(.72,2*PI-acos(mx/ sqrt(.72*.72-my*my) ),asin(my/.72)+PI/2);
-
 	cursor = euclidian(glm::vec3(.72,2*PI-acos(mx/ sqrt(.72*.72-my*my) ),asin(my/.72)+PI/2));
-				//camera = euclidian(glm::vec3(.7,2*PI-acos(0/ sqrt(.7*.7-0) ),asin(0/.7)+PI/2));
-				//cursor = glm::vec3(glm::mat4(1)/projection*glm::vec4(cursor,1));
-
 	lastcursor=cursor;
-				//cursorp = vec3(mat4()/projection*vec4(cursorp,1));
-
-
-				//camera = glm::vec3(glm::mat4(1)/projection*glm::vec4(camera,1));
 
 		for(int i=0;i<city_count&&drawcities;i++){
 			vec3 v=*((vec3*)(cities+i*3));
-			//vec3 v=vec3(1,i*2*PI/7,0.1);
 			vec3 eucvec=projection*(vec4(euclidian(vec3(.72,v.y,v.z)),1));
 
 			bool hover= glm::length(vec2(cursor)-vec2(eucvec))<.02;
@@ -401,10 +383,8 @@ static bool mousemove(Panel *panel,SDL_Event event,int x,int y,int lastx,int las
 			
             	const char* name =(char*)citynames[i];
                 if (!*name)name="No Name";
-std::cout<<UI::fonts["a"] <<"\n";
-				std::cout << i << " " << name << "\n" ;
-                SDL_Surface* surface = TTF_RenderUTF8_Blended(UI::fonts["a"], name,SDL_Color {255,255,255}); // as TTF_RenderText_Solid could only be used on SDL_Surface then you have to create the surface first
-            	std::cout <<surface <<"\n";
+                SDL_Surface* surface = 
+				TTF_RenderUTF8_Blended(UI::fonts["a"], name,SDL_Color {255,255,255}); 
 
             	glDeleteTextures(1,&cityname_texture);
             	glGenTextures(1, &cityname_texture);
@@ -496,7 +476,6 @@ static bool key(Panel *panel,SDL_Event event){
 				dist+=.1;
 				break;
 
-
 	}
 	return true;
 }
@@ -507,15 +486,9 @@ void draw(Panel* panel){
 	
 	glScalef(1080.f/1920.f,1,1);
 	glTranslatef(-.77f,0,0);
-	//glDisable(GL_DEPTH_TEST);
 	glBegin(GL_TRIANGLES);
 	float col=0.f;	
 		
-	/*for (int i=0;i<120;i++){
-		glColor3f(col,col,col);
-		glVertex3fv((float*) (mesh_dome+i) );
-		col+=1.f/120;
-	}*/
 	
 	glEnd();
 	for (int i=0;i<16;i++){
@@ -536,9 +509,6 @@ void draw(Panel* panel){
 		glColor3f(1, .9, .9);
 		mat4 rotmatrix = glm::rotate(mat4(1), nukes[i].angle, nukes[i].axis );
 		vec4 pathvec  = rotmatrix * vec4(nukes[i].startpos * vec3(1+nukes[i].height) , 1 ) ;
-		
-		
-		//memmove(nuke_paths[i], nuke_paths[i]+1,)
 		
 		if( 
 			nukes[i].length > 1 && 
@@ -576,17 +546,7 @@ void draw(Panel* panel){
 			glVertex4fv((float*) &finvec);
 		}
 		glEnd();	
-	/*	
-    	glBegin(GL_LINE_STRIP);
-		for (int np = 1; np < 16 ; np ++ ){
-	
-			glColor4f(.5f,.5f,.5f,1.f-(1.f/16)*(np) );
-			vec4 finvec = projection * vec4(nuke_paths[i][np],1);
-
-			glVertex4fv((float*) &finvec);
-		}
-		glEnd();	
-	*/	
+		
 		nukes[i].height += .00005f*nukes[i].velocity;
 		nukes[i].velocity--;	
 		nukes[i].angle += .02f;
@@ -612,6 +572,14 @@ void draw(Panel* panel){
 	
 	glDrawArraysInstanced(GL_TRIANGLES, 0,120,16);	
 	
+	if(do_screenshot){
+		glReadPixels(0,0,1920,1080,GL_BGRA,GL_UNSIGNED_INT_8_8_8_8_REV,screenshot+61);
+		FILE* fp = fopen("./screenshot.bmp", "w");
+		fwrite(screenshot,1,61*2+1920*1080*4,fp);
+		fclose(fp);
+		do_screenshot=0;
+
+	}
 	if(!drawcities)return;
 	
 	glUseProgram(cityshader);
@@ -630,6 +598,7 @@ void draw(Panel* panel){
 	glDrawArraysInstanced(GL_TRIANGLES, 0,120,city_count);	
     
 	glUseProgram(0);
+	
 
 	if (hovercity == -1) return;
     glDisable(GL_DEPTH_TEST);
@@ -684,16 +653,22 @@ void draw(Panel* panel){
 
 	glDisable(GL_DEPTH_TEST);
 	glEnable(GL_BLEND);
-
+	
 
 }
 
 static bool click(Panel *panel,SDL_Event event,int x,int y){
 	std::cout << "click\n";
-	return 0;
+	return 1;
 	
 }
 
+static bool record(Panel *panel,SDL_Event event,int x,int y){
+	do_screenshot=1;
+	std::cout << "start screen recording\n";
+	return 1;
+	
+}
 static void colorlistadd(Panel* p,void* listdata,int index){
 
     ColorPicker<float>* cp= new ColorPicker<float>(10,10+110*index ,150,100,0);
@@ -730,26 +705,13 @@ int main(){
 		{"colorlistadd" , (void*) colorlistadd },
 		{"roughness" 	, (void*) &roughness   },
 		{"shine"    	, (void*) &shine 	  },
+		{"record"    	, (void*) &record 	  },
 		{"drawcities"  	, (void*) &drawcities  }
 	},"style1.style","data.xml");
 	init();
+	printf("created Ui\n");
 
 	vertices=new float[lo*la*VERTEX_SIZE];
-	
-	void(*render)(Panel *panel) =[](Panel *panel){
-		for (char i=0 ;i<8;i++){
-			float* d = (float*)panel->data;
-			glColor3fv(d+i*4+1);
-			glBegin(GL_QUADS);
-			glVertex2f(-.9+ i* (.9f /4),-.8 +( (d[i*4]-.715)*50  ) );
-			glVertex2f(-.9+ i* (.9f /4)+(.9f /4),-.8+( (d[i*4]-.715)*50  ));
-			glVertex2f(-.9+ i* (.9f /4)+(.9f /4),-.8);
-			glVertex2f(-.9+ i* (.9f /4),-.8);
-			glEnd();
-		}
-	};
-
-	srand (time(NULL));
 	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_BLEND);
 	for (int y=0;y<la;y++){
@@ -784,8 +746,6 @@ int main(){
 		vertices[i*VERTEX_SIZE+3]	= .11;
 		vertices[i*VERTEX_SIZE+4]	= 0;
 	}
-
-
 	for (int j=0;j<la-2;j++){
 		for (int i=0;i<lo;i++){
 			indices1[6*lo*j+i*6+0]	=lo*j+(i)+0       +1;
@@ -797,7 +757,6 @@ int main(){
 			indices1[6*lo*j+i*6+5]	=lo*j+(i+1)%lo+lo +1;
 		}
 	}
-
 	for (int i=0;i<lo;i++){
 		indices1[6*(VERTEX_COUNT-2)+0+i*3]	=0;
 		indices1[6*(VERTEX_COUNT-2)+1+i*3]	=i+1;
@@ -808,7 +767,7 @@ int main(){
 		indices1[6*(VERTEX_COUNT-2)+3*lo+1+i*3]	=(VERTEX_COUNT-2)-i;
 		indices1[6*(VERTEX_COUNT-2)+3*lo+2+i*3]	=(VERTEX_COUNT-2)-(i+1)%lo;
 	}
-
+	printf("Earth mesh created\n");
 
 	ShaderProgram polarshader=ShaderProgram(
 			compileShader(GL_VERTEX_SHADER,readfile("shaders/basic.vert")),
@@ -827,10 +786,9 @@ int main(){
 	);
 
 
-	std::cout << "1_a1\n";
 	int layout[3]={3,1,1};
 
-	uniform uniforms[12] ={
+	uniform uniforms[] ={
 		uniform {glGetUniformLocation(polarshader.id,"u_Cursor"),	UNIFORM_VEC3,1,(float*)&cursor},
 		uniform {glGetUniformLocation(polarshader.id,"u_Camera"),	UNIFORM_VEC4,1,(float*)&camera},
 		uniform {glGetUniformLocation(polarshader.id,"u_Csize"),	UNIFORM_FLOAT,1,&cursorsize},
@@ -851,7 +809,7 @@ int main(){
 		TRIANGLE_COUNT,indices1,
 		VERTEX_COUNT,vertices,
 		3,  layout,
-		12, uniforms
+		sizeof(uniforms)/sizeof(uniform), uniforms
 	);
 	renderObject.shader=&polarshader;
 
@@ -889,7 +847,7 @@ int main(){
 	glBufferData(GL_ARRAY_BUFFER, (40*3*3) *sizeof(float), mesh_dome, GL_STATIC_DRAW);
 	glVertexAttribPointer(0, 3, GL_FLOAT,GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(0);
-
+	printf("start\n");
 	UI::run();
 	delete vertices;
 	return 0;
