@@ -7,7 +7,6 @@
  */
 //#define GLM_FORCE_RADIANS
 
-
 #define GLM_ENABLE_EXPERIMENTAL
 #include <iostream>
 #include <ostream>
@@ -36,18 +35,7 @@
 #include <glm/gtc/noise.hpp>
 #include "misc.h"
 #include "../../Engine2/src/Skybox.h"
-//#include "../../Engine2/src/Window.h"
-//#include "../../Engine2/src/ui/Slider.h"
-//#include "../../Engine2/src/ui/ColorPicker.h"
-//#include "../../Engine2/src/ui/ScrollPane.h"
-//#include "../../Engine2/src/ui/Checkbox.h"
-//#include "../../Engine2/src/ui/Label.h"
-//#include "../../Engine2/src/ui/VListLayout.h"
 #include "../../Engine2/src/ui/UI.h"
-
-
-
-
 
 #define PI 3.1415
 bool running=1;
@@ -76,6 +64,9 @@ char*  citynamebuffer;
 char** citynames;
 vec2  cityname_dims;
 
+uint32_t city_buffer;
+uint32_t explosion_buffer;
+
 int hovercity=-1;
 unsigned int cityname_texture;
 //unsigned int text_texture;
@@ -87,6 +78,24 @@ short screenshot[61+1920*1080*2] = {
 		3,0,4096,39,0,0,0,0,0,0,0,0,0,255,-256,0,255,0,0,-256,28192,22377,
 		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10148,-6400
 		};
+
+typedef struct rocket{
+	uint8_t length;
+	float   velocity;
+	float   angle;
+	float   end_angle;
+	float   height;
+	vec3 axis;
+	vec3 startpos;
+		
+}rocket;
+
+rocket nukes[16];
+vec3 nuke_paths[16][32];
+
+
+vec4   explosions[16];
+
 int* pixelbuffer=(int*)(screenshot+61);
 GLfloat model[16];
 mat4 projection(1);
@@ -143,7 +152,7 @@ ColorPicker<float> colorpickers[16];
 Slider<float> sliders[16];
 Panel spectrumpanels[16];
 Panel specselectpanels[16];
-Panel cspanel(1920-370-100+2,320,100,500,0);
+Panel cspanel(1920-370-100+2, 320, 100, 500, 0);
 
 char dir;
 float cursorsize=.1;
@@ -167,17 +176,24 @@ unsigned int buffer1;
 unsigned int buffer2;
 
 int cityshader;
+int explosionshader;
 float dist=0;
 
 float roughness  = 0.f;
 float shine		 = 0.f;
 
-vec4 mesh_city[(3+1)]={
-			vec4(cos(0*2*PI/3) ,.72f ,sin(0*2*PI/3),1) * .99f,
-			vec4(cos(1*2*PI/3) ,.72f ,sin(1*2*PI/3),1) * .99f,
-			vec4(cos(2*2*PI/3) ,.72f ,sin(2*2*PI/3),1) * .99f,
-			vec4( 0, .72f, 0, 1 ) * 1.01f
+uint8_t pathcount;
+
+vec3 mesh_dome[40*3];
+
+vec4 mesh_city[(3+1+1)]={
+			vec4( 			 0 , .72f, 0, 			  1 ) * 1.01f,
+			vec4(cos(0*2*PI/3) , .72f, sin(0*2*PI/3), 1 ) *  .99f,
+			vec4(cos(1*2*PI/3) , .72f, sin(1*2*PI/3), 1 ) *  .99f,
+			vec4(cos(2*2*PI/3) , .72f, sin(2*2*PI/3), 1 ) *  .99f,
+			vec4(cos(0*2*PI/3) , .72f, sin(0*2*PI/3), 1 ) *  .99f
 		};
+
 bool close (Window* win){
 	std::cout << "close\n";
 	win->running=0;
@@ -186,9 +202,10 @@ bool close (Window* win){
 
 glm::vec3 euclidian(glm::vec3 polar){
 	return glm::vec3(
-			polar.x*cos(polar.y)*sin(polar.z),
-			polar.x*cos(polar.z),
-			polar.x*sin(polar.y)*sin(polar.z));
+			polar.x * cos(polar.y) * sin(polar.z),
+			polar.x * cos(polar.z),
+			polar.x * sin(polar.y) * sin(polar.z)
+			);
 }
 
 static float distance(glm::vec3 p1,glm::vec3 p2){
@@ -226,7 +243,22 @@ static void heighten(char dir){
 	}
 }
 
+static void load_mesh(){
+	FILE* f = fopen("../res/dome.stl","r");
+	uint32_t size;
+	
+	fseek(f, 80, SEEK_CUR);
+	fread(&size, 1, 4, f);
+	
+	for(uint32_t i=0;i<size;i++){
+		fseek(f, 12, SEEK_CUR);
+		fread(mesh_dome + i*3, 3,  sizeof(vec3),f);
+		fseek(f, 2,  SEEK_CUR);
+	}	
+}
+
 static void init(){
+	  load_mesh();
 	  std::ifstream file ("../res/cities",std::ios_base::in);
 	  int citynames_size;
 	  if (file.is_open())
@@ -237,10 +269,16 @@ static void init(){
 		file.read ((char*)&citynames_size, 4);
 		std::cout <<city_count<<" cities\n";
 
-		cities=new float [city_count*3];
+		cities=new float [ city_count*3 ];
+		/*
+		((vec4*)cities)[0] = vec4( 			  0 , .72f, 0,			   1 ) * 1.01f;
+		((vec4*)cities)[1] = vec4(cos(0*2*PI/3) , .72f, sin(0*2*PI/3), 1 ) *  .99f;
+		((vec4*)cities)[2] = vec4(cos(1*2*PI/3) , .72f, sin(1*2*PI/3), 1 ) *  .99f;
+		((vec4*)cities)[3] = vec4(cos(2*2*PI/3) , .72f, sin(2*2*PI/3), 1 ) *  .99f;
+	    */
 		std::cout <<"0\n";
 
-		file.read ((char*)cities,city_count*4*3);
+		file.read (((char*)cities) , city_count*4*3);
 		std::cout <<"1\n";
 
 		citynamebuffer=new char[citynames_size];
@@ -286,6 +324,26 @@ static void init(){
 	glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, renderBuffer);
 	glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
+	for(int i=0;i<16;i++){
+		nukes[i].startpos = euclidian(vec3(.721,cities[i*8*3+1],cities[i*8*3+2] ));
+		vec3 endpos = euclidian(vec3(.721,cities[(city_count-(i*8)-1)*3+1],cities[(city_count-(i*8)-1)*3+2] ));
+		
+		explosions[i]=vec4(endpos,24);
+
+		nukes[i].axis =cross( nukes[i].startpos,endpos );
+		float angle=glm::acos ( glm::dot(glm::normalize(nukes[i].startpos), glm::normalize(endpos)) );
+	
+		//glColor4f(1.f,1.f,1.f,1.f);
+		//glLineWidth(1);
+    	//glBegin(GL_LINES);
+	
+		nukes[i].height 	= 0;
+		nukes[i].velocity 	= 49.f*angle/2;
+		nukes[i].angle 		= 0;
+		nukes[i].end_angle  = angle;	
+		nukes[i].length 	= 8;
+	}
+
 
 	std::cout<<"text loaded\n";
 }
@@ -293,8 +351,8 @@ static void init(){
 static void act(Panel *panel){
 	glm::mat4 rotationMat = glm::mat4(1);
 	if (rotating){
-		rotationMat = glm::rotate(glm::mat4(1), -.01f, vec3(0,1,0));
-		projection=glm::rotate(projection,.01f,vec3(0,1,0));
+		rotationMat = glm::rotate(glm::mat4(1), .01f, vec3(0,1,0));
+		projection=glm::rotate(projection,-.01f,vec3(0,1,0));
 		light = rotationMat*glm::vec4(light,1);
 		orbitaxis= glm::vec3(glm::mat4(1)/rotationMat*glm::vec4(orbitaxis,1));
 
@@ -306,6 +364,7 @@ static void act(Panel *panel){
 	camera = euclidian(glm::vec3(.7,2*PI-acos(0/ sqrt(.7*.7-0) ),asin(0/.7)+PI/2));
 	camera = glm::vec3(glm::mat4(1)/projection*glm::vec4(camera,1));
 
+	
 
 }
 
@@ -320,9 +379,9 @@ static bool mousemove(Panel *panel,SDL_Event event,int x,int y,int lastx,int las
 		my=my*.69/l;
 	}
 
-	cursorp=glm::vec3(.7,2*PI-acos(mx/ sqrt(.7*.7-my*my) ),asin(my/.7)+PI/2);
+	cursorp=glm::vec3(.72,2*PI-acos(mx/ sqrt(.72*.72-my*my) ),asin(my/.72)+PI/2);
 
-	cursor = euclidian(glm::vec3(.7,2*PI-acos(mx/ sqrt(.7*.7-my*my) ),asin(my/.7)+PI/2));
+	cursor = euclidian(glm::vec3(.72,2*PI-acos(mx/ sqrt(.72*.72-my*my) ),asin(my/.72)+PI/2));
 				//camera = euclidian(glm::vec3(.7,2*PI-acos(0/ sqrt(.7*.7-0) ),asin(0/.7)+PI/2));
 				//cursor = glm::vec3(glm::mat4(1)/projection*glm::vec4(cursor,1));
 
@@ -335,19 +394,17 @@ static bool mousemove(Panel *panel,SDL_Event event,int x,int y,int lastx,int las
 		for(int i=0;i<city_count&&drawcities;i++){
 			vec3 v=*((vec3*)(cities+i*3));
 			//vec3 v=vec3(1,i*2*PI/7,0.1);
-			vec3 eucvec=projection*(vec4(euclidian(vec3(.721,v.y,v.z)),1));
+			vec3 eucvec=projection*(vec4(euclidian(vec3(.72,v.y,v.z)),1));
 
 			bool hover= glm::length(vec2(cursor)-vec2(eucvec))<.02;
             if (hover && hovercity != i){
-				std::cout<<"drawcities1\n";
 			
             	const char* name =(char*)citynames[i];
                 if (!*name)name="No Name";
 std::cout<<UI::fonts["a"] <<"\n";
-			
+				std::cout << i << " " << name << "\n" ;
                 SDL_Surface* surface = TTF_RenderUTF8_Blended(UI::fonts["a"], name,SDL_Color {255,255,255}); // as TTF_RenderText_Solid could only be used on SDL_Surface then you have to create the surface first
             	std::cout <<surface <<"\n";
-std::cout<<"drawcities3\n";
 
             	glDeleteTextures(1,&cityname_texture);
             	glGenTextures(1, &cityname_texture);
@@ -370,7 +427,6 @@ std::cout<<"drawcities3\n";
 }
 
 static bool mousedrag(Panel *panel,SDL_Event event,int x,int y,int lastx,int lasty){
-	std::cout << "abc\n";
 	mx=(x/540.f -1)/scale;
 	my=((y)/540.f -1)/scale;
 
@@ -390,9 +446,9 @@ static bool mousedrag(Panel *panel,SDL_Event event,int x,int y,int lastx,int las
 
 		glm::vec3 axis =glm::cross(nlast,ncursor);
 		axis = glm::vec3(glm::mat4(1)/projection*glm::vec4(axis,1));
-		if (axis!=vec3(0,0,0) 						&&
-			nlast!=vec3(0,0,0) 						&&
-			ncursor!=vec3(0,0,0) 					&&
+		if (axis   != vec3(0,0,0) 					&&
+			nlast  != vec3(0,0,0) 					&&
+			ncursor!= vec3(0,0,0) 					&&
 			!isnan(acos(glm::dot(ncursor,nlast))) 	&& 
 			ncursor != nlast)
 		{
@@ -446,49 +502,135 @@ static bool key(Panel *panel,SDL_Event event){
 }
 
 void draw(Panel* panel){
+	glUseProgram(0);
+
+	
+	glScalef(1080.f/1920.f,1,1);
+	glTranslatef(-.77f,0,0);
+	//glDisable(GL_DEPTH_TEST);
+	glBegin(GL_TRIANGLES);
+	float col=0.f;	
+		
+	/*for (int i=0;i<120;i++){
+		glColor3f(col,col,col);
+		glVertex3fv((float*) (mesh_dome+i) );
+		col+=1.f/120;
+	}*/
+	
+	glEnd();
+	for (int i=0;i<16;i++){
+		if (explosions[i].a<24)continue;
+		if (nukes[i].height < 0) {
+			memset(nuke_paths[i],0,32*sizeof(vec3)) ; 
+			nukes[i].length   = (int)(nukes[i].end_angle *8);
+			nukes[i].angle    = 0;
+			nukes[i].height   = 0;
+			nukes[i].velocity = 50;
+			
+			vec3 endpos = euclidian(vec3(.721,cities[(city_count-(i*8)-1)*3+1],cities[(city_count-(i*8)-1)*3+2] ));
+			float angle=glm::acos ( glm::dot(glm::normalize(nukes[i].startpos), glm::normalize(endpos)) );
+	
+			nukes[i].velocity = 49.f*angle/2;
+			explosions[i].a=0;
+		}	
+		glColor3f(1, .9, .9);
+		mat4 rotmatrix = glm::rotate(mat4(1), nukes[i].angle, nukes[i].axis );
+		vec4 pathvec  = rotmatrix * vec4(nukes[i].startpos * vec3(1+nukes[i].height) , 1 ) ;
+		
+		
+		//memmove(nuke_paths[i], nuke_paths[i]+1,)
+		
+		if( 
+			nukes[i].length > 1 && 
+			!( (int)(nukes[i].angle*100+.0001) % (int)(100*.02*4+.0001) ) ){
+			nukes[i].length--;
+		}
+		
+		for (int np = 31; np > 0; np--){
+			nuke_paths[i][np] = nuke_paths[i][np-1]; //TODO use memmove instead
+		}
+
+		nuke_paths[i][0]=vec3(pathvec.x,pathvec.y,pathvec.z);
+		
+		glLineWidth(3);
+    	glBegin(GL_LINES);
+		glColor3f(.3f,.3f,.3f);
+		vec4 finvec = projection * vec4(nuke_paths[i][0],1);
+		glVertex4fv((float*) &finvec);
+		
+		glColor3f(.8f,.7f,.2f);
+		finvec = projection * vec4(nuke_paths[i][1],1);
+		glVertex4fv((float*) &finvec);
+		
+		glEnd();
+		glLineWidth(2);
+    	glBegin(GL_LINE_STRIP);
+
+
+
+		for (int np = 1; np < nukes[i].length  ; np ++ ){
+			glColor4f(.5f,1.f,8.f,1.f-(1.f/nukes[i].length)*np);
+			if (nuke_paths[i][np].x == 0)	break;
+			vec4 finvec = projection * vec4(nuke_paths[i][np],1);
+
+			glVertex4fv((float*) &finvec);
+		}
+		glEnd();	
+	/*	
+    	glBegin(GL_LINE_STRIP);
+		for (int np = 1; np < 16 ; np ++ ){
+	
+			glColor4f(.5f,.5f,.5f,1.f-(1.f/16)*(np) );
+			vec4 finvec = projection * vec4(nuke_paths[i][np],1);
+
+			glVertex4fv((float*) &finvec);
+		}
+		glEnd();	
+	*/	
+		nukes[i].height += .00005f*nukes[i].velocity;
+		nukes[i].velocity--;	
+		nukes[i].angle += .02f;
+	
+	}
+	for (int i=0;i<16;i++){
+		if (explosions[i].a<24)	{	
+				explosions[i].a++;
+		}
+	}	
+
+	glUseProgram(explosionshader);
+	glUniform4fv( glGetUniformLocation(explosionshader,"u_explosions" ), 16,(float*) explosions );
+	glUniformMatrix4fv( 
+					glGetUniformLocation(explosionshader,"u_Projection") , 
+					1, 0, (float*) &projection 
+					);
+	glEnable(GL_DEPTH_TEST);
+	
+	glBindBuffer(GL_ARRAY_BUFFER, explosion_buffer);
+	glVertexAttribPointer(0, 3, GL_FLOAT,GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(0);
+	
+	glDrawArraysInstanced(GL_TRIANGLES, 0,120,16);	
+	
 	if(!drawcities)return;
 	
 	glUseProgram(cityshader);
-	glUniformMatrix4fv( glGetUniformLocation(cityshader,"u_Projection") ,1,0,(float*) &projection );
-	glPointSize(5);
-	glLineWidth(3);
-	//glDisable(GL_DEPTH_TEST);
-
-	for (int i=0;i<city_count;i++ ){
+	glUniform3fv( glGetUniformLocation(cityshader,"u_Cities" ), city_count, cities );
+	glUniformMatrix4fv( 
+					glGetUniformLocation(cityshader,"u_Projection") , 
+					1, 0, (float*) &projection 
+					);
+	glUniform1i( glGetUniformLocation(cityshader,"hover_city_index") , hovercity );
+	glEnable(GL_DEPTH_TEST);
 	
-		vec3 v=*((vec3*)(cities+i*3));
-		//vec3 v=vec3(1,i*2*PI/7,0.1);
-		vec3 eucvec=euclidian(vec3(1,v.y,v.z));
-		vec3 y_axis=vec3(0,1,0);
-		glm::vec3 axis =glm::cross(y_axis,eucvec);
-		//axis = glm::vec3(glm::mat4(1)/projection*glm::vec4(axis,1));
-
-		mat4 rotmatrix = glm::rotate(projection,(float)(acos(glm::dot(y_axis,eucvec))), axis);
-		vec4 vs[3];
-		
-		glLoadIdentity();
-		//glScalef(1080.f/1920,1,1);
-		//glTranslatef(-.77,0,0);
-		//glScalef(scale,scale,1);
-		float zoom=.01f+v.x/5000000000.0f;
-		
-		glEnable(GL_DEPTH_TEST);
-		glLineWidth(2);
-		glColor4f(.6,0,0,.7);
-		if (hovercity==i)glColor4f(1,1,1,.7);
-
-		glBegin(GL_TRIANGLE_FAN);
-		
-		vec4 mid_vert = rotmatrix * (mesh_city[3] *1.01f);
-
-		glVertex3fv( (float*) &mid_vert  );	
-		for (int i=0;i<4;i++){
-			vec4 eucvec = rotmatrix * (vec4(zoom*mesh_city[i%3].x,mesh_city[i%3].y,zoom*mesh_city[i%3].z,1)*.99f);
-			glVertex4fv((float*)(&eucvec));
-		}
-		glEnd();
-	}
+	glBindBuffer(GL_ARRAY_BUFFER, city_buffer);
+	glVertexAttribPointer(0, 3, GL_FLOAT,GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(0);
+	
+	glDrawArraysInstanced(GL_TRIANGLES, 0,120,city_count);	
     
+	glUseProgram(0);
+
 	if (hovercity == -1) return;
     glDisable(GL_DEPTH_TEST);
     
@@ -502,38 +644,39 @@ void draw(Panel* panel){
 	float h=(cityname_dims.y +  3)/1080.0*1.5;
 	
 	glBegin(GL_QUADS);
-	glVertex3f(v2.x + .01,		v2.y + .01		,-.8);
-	glVertex3f(v2.x + .01 + w,	v2.y + .01		,-.8);
-	glVertex3f(v2.x + .01 + w,	v2.y + .01 + h	,-.8);
-	glVertex3f(v2.x + .01,		v2.y + .01 + h	,-.8);
+		glVertex3f(v2.x + .01,		v2.y + .01		,-.8);
+		glVertex3f(v2.x + .01 + w,	v2.y + .01		,-.8);
+		glVertex3f(v2.x + .01 + w,	v2.y + .01 + h	,-.8);
+		glVertex3f(v2.x + .01,		v2.y + .01 + h	,-.8);
 	glEnd();
 	
 	glLineWidth(.2);
 	glColor4f(.5,.5,.5,.3);
 	
 	glBegin(GL_LINE_LOOP);
-	glVertex3f(v2.x + .01 + 	.001,	v2.y + .01 + 	.001,	-.8);
-	glVertex3f(v2.x + .01 + w - .001,	v2.y + .01 + 	.001,	-.8);
-	glVertex3f(v2.x + .01 + w - .001,	v2.y + .01 + h -.001,	-.8);
-	glVertex3f(v2.x + .01 + 	.001,	v2.y + .01 + h -.001,	-.8);
+		glVertex3f(v2.x + .01 + 	.001,	v2.y + .01 + 	.001,	-.8);
+		glVertex3f(v2.x + .01 + w - .001,	v2.y + .01 + 	.001,	-.8);
+		glVertex3f(v2.x + .01 + w - .001,	v2.y + .01 + h -.001,	-.8);
+		glVertex3f(v2.x + .01 + 	.001,	v2.y + .01 + h -.001,	-.8);
 	glEnd();
 
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D,cityname_texture);
 	glColor4f(1,1,1,.5f);
+	
 	glBegin(GL_QUADS);
 	
-	glVertex3f(v2.x+.01+.01,	v2.y+.01+h-.005    ,-.8);
-	glTexCoord2f(1,0);
+		glVertex3f(v2.x+.01+.01,	v2.y+.01+h-.005    ,-.8);
+		glTexCoord2f(1,0);
 
-	glVertex3f(v2.x+.01+w-.01,	v2.y+.01+h-.005 	,-.8);
-	glTexCoord2f(1,1);
+		glVertex3f(v2.x+.01+w-.01,	v2.y+.01+h-.005 	,-.8);
+		glTexCoord2f(1,1);
 
-	glVertex3f(v2.x+.01+w-.01,	v2.y+.01+.005    	,-.8);
-	glTexCoord2f(0,1);
+		glVertex3f(v2.x+.01+w-.01,	v2.y+.01+.005    	,-.8);
+		glTexCoord2f(0,1);
 
-	glVertex3f(v2.x+.01+.01,	v2.y+.01+.005    	,-.8);
-	glTexCoord2f(0,0);
+		glVertex3f(v2.x+.01+.01,	v2.y+.01+.005    	,-.8);
+		glTexCoord2f(0,0);
 	
 	glEnd();
 	
@@ -542,7 +685,6 @@ void draw(Panel* panel){
 	glDisable(GL_DEPTH_TEST);
 	glEnable(GL_BLEND);
 
-	std::cout<<"draw1\n";
 
 }
 
@@ -567,12 +709,13 @@ static void colorlistadd(Panel* p,void* listdata,int index){
 }
 
 int main(){
+	cursorp=vec3(.7,.1,.1);
+	cursor=euclidian(cursorp);
 	RenderObj renderObject;
 	Skybox ro2;
 	
 	SDL_Init(SDL_INIT_EVERYTHING);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
 
 	UI::init({
 		{"close" 		, (void*) close 	},
@@ -593,9 +736,6 @@ int main(){
 
 	vertices=new float[lo*la*VERTEX_SIZE];
 	
-
-
-	
 	void(*render)(Panel *panel) =[](Panel *panel){
 		for (char i=0 ;i<8;i++){
 			float* d = (float*)panel->data;
@@ -608,8 +748,6 @@ int main(){
 			glEnd();
 		}
 	};
-
-
 
 	srand (time(NULL));
 	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -629,25 +767,16 @@ int main(){
 
 			float x2=((x+360)*ratio)/90.0;
 
-			//if (x>360)x1=-x1;
 			float h=(glm::perlin(glm::vec2(x1,y1),rep)+glm::perlin(glm::vec2(x2,y1),rep))/2.0;
 
-			heightmap[x+lo*y]=
+			heightmap[x+lo*y] =	abs(h);
 
-
-					abs(h);
-
-
-			//std::cout<<glm::perlin(glm::vec2(float(x)/lo,float(y)/la))<<"\n";
 		}
 	}
-
 
 	SDL_Surface* img=SDL_LoadBMP("../res/earth.bmp");
 	unsigned char* pixels=(unsigned char*)img->pixels;
 
-
-	//gluPerspective(0,1,1,100);
 	for (int i=0;i<(VERTEX_COUNT);i++){
 		vertices[i*VERTEX_SIZE]		=.721+pixels[i+1]/256.0;
 		vertices[i*VERTEX_SIZE+1]	= PI*2/lo * (i%lo);
@@ -679,12 +808,11 @@ int main(){
 		indices1[6*(VERTEX_COUNT-2)+3*lo+1+i*3]	=(VERTEX_COUNT-2)-i;
 		indices1[6*(VERTEX_COUNT-2)+3*lo+2+i*3]	=(VERTEX_COUNT-2)-(i+1)%lo;
 	}
-	
 
 
 	ShaderProgram polarshader=ShaderProgram(
 			compileShader(GL_VERTEX_SHADER,readfile("shaders/basic.vert")),
-			0,//compileShader(GL_GEOMETRY_SHADER,readfile("basic.gs")),
+			0,
 			compileShader(GL_FRAGMENT_SHADER,readfile("shaders/basic.frag"))
 	);
 	cityshader=createShaderProgram(
@@ -692,10 +820,17 @@ int main(){
 		0,
 		compileShader(GL_FRAGMENT_SHADER,readfile("shaders/basic.frag"))
 	);
+	explosionshader=createShaderProgram(
+		compileShader(GL_VERTEX_SHADER,readfile("shaders/explosion.vert")),
+		0,
+		compileShader(GL_FRAGMENT_SHADER,readfile("shaders/basic.frag"))
+	);
+
+
 	std::cout << "1_a1\n";
 	int layout[3]={3,1,1};
-	
-	uniform uniforms[11] ={
+
+	uniform uniforms[12] ={
 		uniform {glGetUniformLocation(polarshader.id,"u_Cursor"),	UNIFORM_VEC3,1,(float*)&cursor},
 		uniform {glGetUniformLocation(polarshader.id,"u_Camera"),	UNIFORM_VEC4,1,(float*)&camera},
 		uniform {glGetUniformLocation(polarshader.id,"u_Csize"),	UNIFORM_FLOAT,1,&cursorsize},
@@ -705,16 +840,18 @@ int main(){
 		uniform {glGetUniformLocation(polarshader.id,"u_Projection"),UNIFORM_MAT4,1,(float*)&projection},
 		uniform {glGetUniformLocation(polarshader.id,"u_ModelView"),UNIFORM_MAT4,1,(float*)&modelview},
 		uniform {glGetUniformLocation(polarshader.id,"u_Roughness"),UNIFORM_FLOAT,1,&roughness},//b1.value},
-		uniform {glGetUniformLocation(polarshader.id,"u_Shine")  ,	UNIFORM_FLOAT,1,&shine},//b2.value},
-		uniform {glGetUniformLocation(polarshader.id,"u_Spectrum"),	UNIFORM_VEC4,16,spectrum},
+		uniform {glGetUniformLocation(polarshader.id,"u_Shine")  ,	    UNIFORM_FLOAT,1,&shine},//b2.value},
+		uniform {glGetUniformLocation(polarshader.id,"u_Spectrum"),	    UNIFORM_VEC4,16,spectrum},
+		uniform {glGetUniformLocation(polarshader.id,"u_explosions"),	UNIFORM_VEC4,16,(float*)&explosions}
+		
 	};
-	
-	
+
+
 	renderObject = RenderObj (
-			TRIANGLE_COUNT,indices1,
-			VERTEX_COUNT,vertices,
-			3,layout,
-			11,uniforms
+		TRIANGLE_COUNT,indices1,
+		VERTEX_COUNT,vertices,
+		3,  layout,
+		12, uniforms
 	);
 	renderObject.shader=&polarshader;
 
@@ -725,30 +862,33 @@ int main(){
 
 
 	if(!(xpos && ypos && zpos && xneg && yneg && zneg)) {
-	    printf("IMG_Load: %s\n", IMG_GetError());
-	    // handle error
+		printf("IMG_Load: %s\n", IMG_GetError());
+		// handle error
 	}
 
 
-	ro2 =Skybox ((float*)&sky_Matrix,xpos->w,xpos->pixels,ypos->pixels,zpos->pixels,xneg->pixels,yneg->pixels,zneg->pixels);
+	ro2 =Skybox (
+					(float*)&sky_Matrix,xpos->w,
+					xpos->pixels,  ypos->pixels,
+					zpos->pixels,  xneg->pixels,
+					yneg->pixels,  zneg->pixels
+				);
 
 	ro2.children.push_back(renderObject);
-	//win.panel.object=&skybox;
 
-	//glUseProgram(0);
 	scale=1;
 
-	/*
-	glMatrixMode(GL_PROJECTION);
-	gluPerspective(	45,	1,	.1,	100);
-	glGetFloatv(GL_PROJECTION_MATRIX,(float*)&modelview);
-	glMatrixMode(GL_MODELVIEW);
+	glGenBuffers(1, &city_buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, city_buffer);
+	glBufferData(GL_ARRAY_BUFFER, (40*3*3) *sizeof(float), mesh_dome, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT,GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(0);
 
-	for (int i=0;i<16;i++){
-		std::cout<<((float*)&modelview)[i]<<"\n";
-	}
-	glLoadIdentity();
-	*/
+	glGenBuffers(1, &explosion_buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, explosion_buffer);
+	glBufferData(GL_ARRAY_BUFFER, (40*3*3) *sizeof(float), mesh_dome, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT,GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(0);
 
 	UI::run();
 	delete vertices;
